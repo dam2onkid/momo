@@ -14,6 +14,7 @@ const requiredEnvVars = [
   "OPENAI_API_KEY",
   "APTOS_PRIVATE_KEY",
   "APTOS_NETWORK",
+  "ENCRYPTION_KEY",
 ];
 
 for (const envVar of requiredEnvVars) {

@@ -9,12 +9,12 @@ if (!process.env.SUPABASE_ANON_KEY)
 
 export const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY,
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-    },
-  }
+  process.env.SUPABASE_ANON_KEY
+  // {
+  //   auth: {
+  //     autoRefreshToken: true,
+  //     persistSession: true,
+  //     detectSessionInUrl: true,
+  //   },
+  // }
 );
