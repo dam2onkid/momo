@@ -23,3 +23,6 @@ pids
 # OS
 .DS_Store
 Thumbs.db
+
+# Package-lock.json
+package-lock.json

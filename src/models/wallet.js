@@ -1,6 +1,7 @@
 import { TABLES } from "./const.js";
 import { supabase } from "../config/supabase.js";
 import { encrypt } from "../utils/encrypt.js";
+
 // Wallet operations
 const createWallet = async (walletData) => {
   const { data, error } = await supabase
@@ -8,9 +9,11 @@ const createWallet = async (walletData) => {
     .insert({
       telegram_id: walletData.telegram_id,
       wallet_name: walletData.wallet_name,
-      private_key: encrypt(walletData.private_key),
+      // private_key: encrypt(walletData.private_key),
+      private_key: walletData.private_key,
       public_key: walletData.public_key,
       address: walletData.address,
+      is_default: walletData.is_default || false,
     })
     .select();
 
@@ -35,7 +38,7 @@ const getWalletByName = async (telegramId, walletName) => {
     .select("*")
     .eq("telegram_id", telegramId)
     .eq("wallet_name", walletName)
-    .eq("is_active", true)
+    .eq("deleted", false)
     .single();
 
   if (error) throw error;
@@ -60,5 +63,18 @@ const updateWalletStatus = async (telegramId, walletName, isDefault) => {
 
   if (updateError) throw updateError;
 };
+
+export async function updateWalletName(telegramId, oldName, newName) {
+  const { error } = await supabase
+    .from(TABLES.WALLETS)
+    .update({
+      wallet_name: newName,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("telegram_id", telegramId)
+    .eq("wallet_name", oldName);
+
+  if (error) throw error;
+}
 
 export { createWallet, getUserWallets, getWalletByName, updateWalletStatus };

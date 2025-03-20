@@ -3,16 +3,25 @@ import {
   Account,
   PrivateKeyVariants,
   PrivateKey,
+  AptosConfig,
+  Aptos,
 } from "@aptos-labs/ts-sdk";
 import { LocalSigner } from "move-agent-kit";
 
 import {
   createWallet,
   getUserWallets,
+  getWalletByName,
   updateWalletStatus,
+  updateWalletName,
 } from "../models/wallet.js";
-import { getAgentRunTime } from "./agent.js";
+import { getAgentRuntime } from "./agent.js";
 import { decrypt } from "../utils/encrypt.js";
+
+const aptosConfig = new AptosConfig({
+  network: process.env.APTOS_NETWORK,
+});
+const aptos = new Aptos(aptosConfig);
 
 const validatePrivateKey = (privateKey) => {
   try {
@@ -27,9 +36,21 @@ const validatePrivateKey = (privateKey) => {
   }
 };
 
-const generateAptosWallet = async (telegramId, walletName = "default") => {
+const generateAptosWallet = async (
+  telegramId,
+  walletName,
+  isDefault = false
+) => {
   try {
     const AptosAccount = Account.generate();
+
+    walletName =
+      walletName ||
+      `${AptosAccount.accountAddress
+        .toString()
+        .substring(0, 5)}...${AptosAccount.accountAddress
+        .toString()
+        .substring(AptosAccount.accountAddress.toString().length - 5)}`;
 
     const wallet = await createWallet({
       telegram_id: telegramId,
@@ -37,6 +58,7 @@ const generateAptosWallet = async (telegramId, walletName = "default") => {
       private_key: AptosAccount.privateKey.toString(),
       public_key: AptosAccount.publicKey.toString(),
       address: AptosAccount.accountAddress.toString(),
+      is_default: isDefault,
     });
 
     return wallet;
@@ -46,15 +68,14 @@ const generateAptosWallet = async (telegramId, walletName = "default") => {
   }
 };
 
-const getOrCreateDefaultWallet = async (telegramId, walletName = "default") => {
+const getOrCreateDefaultWallet = async (telegramId, walletName) => {
   try {
     const wallets = await getUserWallets(telegramId);
     if (!wallets || wallets.length === 0) {
-      return await generateAptosWallet(telegramId, walletName);
+      return await generateAptosWallet(telegramId, walletName, true);
     }
 
     const wallet = wallets.find((w) => w.is_default) || wallets[0];
-    wallet.private_key = decrypt(wallet.private_key);
     return wallet;
   } catch (error) {
     console.error("Error getting or creating default wallet:", error);
@@ -62,195 +83,692 @@ const getOrCreateDefaultWallet = async (telegramId, walletName = "default") => {
   }
 };
 
-const getSigner = async (wallet) => {
+const getSignerAndAccount = async (wallet) => {
   if (!wallet.private_key) {
     throw new Error("Private key is not set for this wallet.");
   }
-  const privateKey = PrivateKey.formatPrivateKey(
-    wallet.private_key,
-    PrivateKeyVariants.Ed25519
-  );
-
-  const account = await Account.fromPrivateKey({
-    privateKey: new Ed25519PrivateKey(privateKey),
+  const account = await aptos.deriveAccountFromPrivateKey({
+    privateKey: new Ed25519PrivateKey(
+      PrivateKey.formatPrivateKey(
+        wallet.private_key,
+        PrivateKeyVariants.Ed25519
+      )
+    ),
   });
 
   const signer = new LocalSigner(account, process.env.APTOS_NETWORK);
-  return signer;
+  return { signer, account };
 };
 
-const importWallet = async (ctx) => {
+const getBalance = async (ctx) => {
   try {
     const telegramId = ctx.from.id.toString();
-    const message = ctx.message.text;
-    const botUsername = ctx.me.username;
-    const isMentioned = message.includes(`@${botUsername}`);
-    const isGroupChat = ctx.chat.type !== "private";
+    const wallet = await getOrCreateDefaultWallet(telegramId);
+    const agentRuntime = await getAgentRuntime(wallet);
+    const balance = await agentRuntime.getBalance();
 
-    // Only process in private chat or when mentioned in group
-    if (isGroupChat && !isMentioned) return;
-
-    // Extract private key from message
-    // Expected format: /import <private_key> <wallet_name>
-    const parts = message.split(" ");
-    if (parts.length < 3) {
-      await ctx.reply(
-        "Please provide the private key and wallet name.\n" +
-          "Format: /import <private_key> <wallet_name>"
-      );
-      return;
-    }
-
-    const privateKeyHex = parts[1];
-    const walletName = parts[2];
-
-    // Validate private key format
-    if (!/^[0-9a-fA-F]{64}$/.test(privateKeyHex)) {
-      await ctx.reply(
-        "Invalid private key format. Please provide a valid 64-character hex string."
-      );
-      return;
-    }
-
-    // Create Aptos private key from hex
-    const privateKey = new Ed25519PrivateKey(privateKeyHex);
-    const publicKey = privateKey.publicKey();
-    const address = publicKey.toAddress();
-
-    // Check if wallet name already exists
-    const existingWallets = await getUserWallets(telegramId);
-    const existingWallet = existingWallets.find(
-      (w) => w.wallet_name === walletName
-    );
-
-    if (existingWallet) {
-      await ctx.reply(
-        `A wallet with name "${walletName}" already exists. Please choose a different name.`
-      );
-      return;
-    }
-
-    // Create new wallet
-    const wallet = await createWallet({
-      telegram_id: telegramId,
-      wallet_name: walletName,
-      private_key: privateKeyHex,
-      public_key: publicKey.toString(),
-      address: address.toString(),
-    });
-
-    // If this is the first wallet, set it as default
-    if (existingWallets.length === 0) {
-      await updateWalletStatus(telegramId, walletName, true);
-    }
+    // Create inline keyboard with actions
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: "🔑 Create New Wallet", callback_data: "create_wallet" },
+          { text: "📥 Import Wallet", callback_data: "import_wallet_start" },
+        ],
+      ],
+    };
 
     await ctx.reply(
-      `✅ Wallet imported successfully!\n\n` +
-        `Name: ${walletName}\n` +
-        `Address: \`${address.toString()}\`\n\n` +
-        `Use /wallet list to see all your wallets.`,
-      { parse_mode: "Markdown" }
+      `💰 Your balance is ${balance} APT.\n` +
+        `📝 Wallet: \`${wallet.address}\``,
+      {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      }
     );
   } catch (error) {
-    console.error("Error importing wallet:", error);
+    console.error("Error getting balance:", error);
+
+    // If no wallet, show options to create or import
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: "🔑 Create New Wallet", callback_data: "create_wallet" },
+          { text: "📥 Import Wallet", callback_data: "import_wallet_start" },
+        ],
+      ],
+    };
+
     await ctx.reply(
-      "Failed to import wallet. Please check the private key and try again."
+      "You don't have any wallets yet. Would you like to create a new wallet or import an existing one?",
+      { reply_markup: keyboard }
     );
   }
 };
 
-const setDefaultWallet = async (ctx) => {
+const getWallets = async (ctx) => {
   try {
     const telegramId = ctx.from.id.toString();
-    const message = ctx.message.text;
-    const botUsername = ctx.me.username;
-    const isMentioned = message.includes(`@${botUsername}`);
-    const isGroupChat = ctx.chat.type !== "private";
-
-    // Only process in private chat or when mentioned in group
-    if (isGroupChat && !isMentioned) return;
-
-    // Extract wallet name from message
-    // Expected format: /setdefault <wallet_name>
-    const parts = message.split(" ");
-    if (parts.length < 2) {
-      await ctx.reply(
-        "Please provide the wallet name.\n" +
-          "Format: /setdefault <wallet_name>"
-      );
-      return;
-    }
-
-    const walletName = parts[1];
-
-    // Get user's wallets
     const wallets = await getUserWallets(telegramId);
-    const targetWallet = wallets.find((w) => w.wallet_name === walletName);
 
-    if (!targetWallet) {
-      await ctx.reply(
-        `Wallet "${walletName}" not found. Use /wallet list to see your wallets.`
-      );
+    // Create inline keyboard with wallet buttons
+    const walletButtons = wallets.map((wallet) => [
+      {
+        text: `${wallet.wallet_name}${wallet.is_default ? " ✅" : ""}`,
+        callback_data: `export_${wallet.wallet_name}`,
+      },
+    ]);
+
+    // Add create and import buttons at the bottom
+    const actionButtons = [
+      [
+        { text: "➕ Create Wallet", callback_data: "create_wallet" },
+        { text: "📥 Import Wallet", callback_data: "import_wallet_start" },
+      ],
+    ];
+
+    console.log("walletButtons", walletButtons);
+    console.log("actionButtons", actionButtons);
+    // Combine all buttons
+    const keyboard = [...walletButtons, ...actionButtons];
+
+    await ctx.reply(`📒 Wallets (${wallets.length})`, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+  } catch (error) {
+    console.error("Error listing wallets:", error);
+
+    // If error or no wallets, show only create and import buttons
+    const keyboard = [
+      [
+        { text: "➕ Create Wallet", callback_data: "create_wallet" },
+        { text: "📥 Import Wallet", callback_data: "import_wallet_start" },
+      ],
+    ];
+
+    await ctx.reply(`📒 Wallets (0)`, {
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+    });
+  }
+};
+
+const handleWalletSelectionCallback = async (ctx) => {
+  try {
+    const data = ctx.callbackQuery.data;
+    if (!data.startsWith("export_")) return;
+
+    const walletName = data.replace("export_", "");
+    const telegramId = ctx.from.id.toString();
+
+    const wallet = await getWalletByName(telegramId, walletName);
+    if (!wallet) {
+      await ctx.reply(`Wallet "${walletName}" not found.`);
       return;
     }
 
-    // Update default wallet status
-    await updateWalletStatus(telegramId, walletName, true);
+    // Get balance
+    const agentRuntime = await getAgentRuntime(wallet);
+    const balance = await agentRuntime.getBalance();
 
-    await ctx.reply(
-      `✅ Default wallet updated!\n\n` +
-        `New default wallet: ${walletName}\n` +
-        `Address: \`${targetWallet.address}\``,
-      { parse_mode: "Markdown" }
+    // Set default button text based on current status
+    const defaultBtnText = wallet.is_default
+      ? "✅ Default Wallet"
+      : "⭐ Set as Default";
+
+    // Create inline keyboard with actions
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: `🏷 Name: ${walletName}`,
+            callback_data: `rename_${walletName}`,
+          },
+        ],
+        [
+          {
+            text: defaultBtnText,
+            callback_data: `toggle_default_${walletName}`,
+          },
+        ],
+        [
+          {
+            text: "💸 Withdraw APT",
+            callback_data: `withdraw_APT_${walletName}`,
+          },
+          {
+            text: "🔄 Withdraw Tokens",
+            callback_data: `withdraw_tokens_${walletName}`,
+          },
+        ],
+        [
+          { text: "❌ Delete", callback_data: `delete_${walletName}` },
+          { text: "← Back", callback_data: "back_to_wallets" },
+        ],
+      ],
+    };
+
+    // Update the message with wallet details
+    await ctx.editMessageText(
+      `💰 Balance: ${balance} APT\n` +
+        `📝 Wallet:\n` +
+        `\`${wallet.address}\`\n\n` +
+        `🔑 Private Key:\n` +
+        `\`${wallet.private_key}\``,
+      {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      }
     );
   } catch (error) {
-    console.error("Error setting default wallet:", error);
+    console.error("Error handling wallet selection:", error);
+    await ctx.reply("Failed to load wallet details. Please try again.");
+  }
+};
+
+// Add handler for toggling default wallet status
+const handleToggleDefaultWallet = async (ctx) => {
+  try {
+    const data = ctx.callbackQuery.data;
+    const walletName = data.replace("toggle_default_", "");
+    const telegramId = ctx.from.id.toString();
+
+    const wallet = await getWalletByName(telegramId, walletName);
+    if (!wallet) {
+      await ctx.reply(`Wallet "${walletName}" not found.`);
+      return;
+    }
+
+    // If already default, do nothing (we don't allow "un-defaulting" a wallet)
+    if (wallet.is_default) {
+      await ctx.answerCallbackQuery({
+        text: "This is already your default wallet",
+        show_alert: true,
+      });
+      return;
+    }
+
+    // Toggle default status
+    await updateWalletStatus(telegramId, walletName, true);
+
+    // Get updated wallet with balance
+    const updatedWallet = await getWalletByName(telegramId, walletName);
+    const agentRuntime = await getAgentRuntime(updatedWallet);
+    const balance = await agentRuntime.getBalance();
+
+    // Set default button text based on new status
+    const defaultBtnText = "✅ Default Wallet";
+
+    // Create updated inline keyboard
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: `🏷 Name: ${walletName}`,
+            callback_data: `rename_${walletName}`,
+          },
+        ],
+        [
+          {
+            text: defaultBtnText,
+            callback_data: `toggle_default_${walletName}`,
+          },
+        ],
+        [
+          {
+            text: "💸 Withdraw APT",
+            callback_data: `withdraw_APT_${walletName}`,
+          },
+          {
+            text: "🔄 Withdraw Tokens",
+            callback_data: `withdraw_tokens_${walletName}`,
+          },
+        ],
+        [
+          { text: "❌ Delete", callback_data: `delete_${walletName}` },
+          { text: "← Back", callback_data: "back_to_wallets" },
+        ],
+      ],
+    };
+
+    // Update the message with updated wallet details
+    await ctx.editMessageText(
+      `✅ Set as default wallet!\n\n` +
+        `💰 Balance: ${balance} APT\n` +
+        `📝 Wallet:\n` +
+        `\`${updatedWallet.address}\``,
+      {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      }
+    );
+  } catch (error) {
+    console.error("Error toggling default wallet:", error);
     await ctx.reply("Failed to set default wallet. Please try again.");
   }
 };
 
-const getBalance = async (ctx) => {
-  const wallet = await getOrCreateDefaultWallet(ctx.from.id.toString());
-  const signer = await getSigner(wallet);
-  const agentRunTime = await getAgentRunTime(signer);
-  console.log(wallet.address);
-  const balance = await agentRunTime.getBalance(wallet.address);
-  await ctx.reply(`Your balance is ${balance} APT.`);
+const handleWithdrawAPT = async (ctx) => {
+  try {
+    const data = ctx.callbackQuery.data;
+    const walletName = data.replace("withdraw_APT_", "");
+    await ctx.reply(
+      `Withdraw APT functionality for ${walletName} coming soon!`
+    );
+  } catch (error) {
+    console.error("Error handling APT withdrawal:", error);
+    await ctx.reply("Failed to process withdrawal. Please try again.");
+  }
 };
 
-const listWallets = async (ctx) => {
+const handleWithdrawTokens = async (ctx) => {
+  try {
+    const data = ctx.callbackQuery.data;
+    const walletName = data.replace("withdraw_tokens_", "");
+    await ctx.reply(
+      `Withdraw tokens functionality for ${walletName} coming soon!`
+    );
+  } catch (error) {
+    console.error("Error handling token withdrawal:", error);
+    await ctx.reply("Failed to process withdrawal. Please try again.");
+  }
+};
+
+const handleDeleteWallet = async (ctx) => {
+  try {
+    const data = ctx.callbackQuery.data;
+    const walletName = data.replace("delete_", "");
+    await ctx.reply(
+      `Delete wallet functionality for ${walletName} coming soon!`
+    );
+  } catch (error) {
+    console.error("Error handling wallet deletion:", error);
+    await ctx.reply("Failed to delete wallet. Please try again.");
+  }
+};
+
+const handleBackToWallets = async (ctx) => {
   try {
     const telegramId = ctx.from.id.toString();
     const wallets = await getUserWallets(telegramId);
 
-    if (!wallets || wallets.length === 0) {
-      await ctx.reply(
-        "You don't have any wallets yet. Use /wallet create to create one."
-      );
-      return;
-    }
+    // Create inline keyboard with wallet buttons
+    const walletButtons = wallets.map((wallet) => [
+      {
+        text: `${wallet.wallet_name}${wallet.is_default ? " ✅" : ""}`,
+        callback_data: `export_${wallet.wallet_name}`,
+      },
+    ]);
 
-    let message = "🔑 Your wallets:\n\n";
-    for (const wallet of wallets) {
-      message += `${wallet.is_default ? "✅ " : ""}${wallet.wallet_name}\n`;
-      message += `Address: \`${wallet.address}\`\n\n`;
-    }
+    // Add create and import buttons at the bottom
+    const actionButtons = [
+      [
+        { text: "➕ Create Wallet", callback_data: "create_wallet" },
+        { text: "📥 Import Wallet", callback_data: "import_wallet_start" },
+      ],
+    ];
 
-    message += "\nUse /setdefault <wallet_name> to change your default wallet.";
+    // Combine all buttons
+    const keyboard = [...walletButtons, ...actionButtons];
 
-    await ctx.reply(message, { parse_mode: "Markdown" });
+    await ctx.editMessageText(`📒 Wallets (${wallets.length})`, {
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+    });
   } catch (error) {
-    console.error("Error listing wallets:", error);
-    await ctx.reply("Failed to list wallets. Please try again.");
+    console.error("Error returning to wallet list:", error);
+    await ctx.reply("Failed to load wallet list. Please try again.");
+  }
+};
+
+// Add new handler for rename functionality
+const handleRenameWallet = async (ctx) => {
+  try {
+    const data = ctx.callbackQuery.data;
+    const oldWalletName = data.replace("rename_", "");
+    const telegramId = ctx.from.id.toString();
+
+    // Store the wallet being renamed in temporary state
+    ctx.session = {
+      ...ctx.session,
+      renameWallet: {
+        oldName: oldWalletName,
+        telegramId: telegramId,
+        isRenaming: true,
+      },
+    };
+
+    await ctx.reply(
+      "Please enter the new name for your wallet.\n" +
+        "Requirements:\n" +
+        "- Maximum 20 characters\n" +
+        "- Only letters, numbers, and underscores\n" +
+        "- Must be unique among your wallets"
+    );
+  } catch (error) {
+    console.error("Error initiating wallet rename:", error);
+    await ctx.reply("Failed to initiate rename. Please try again.");
+  }
+};
+
+// Add handler for processing the new wallet name
+const handleRenameMessage = async (ctx) => {
+  try {
+    // Check if we're in renaming mode
+    if (!ctx.session?.renameWallet?.isRenaming) {
+      return false;
+    }
+
+    const newName = ctx.message.text.trim();
+    const { oldName, telegramId } = ctx.session.renameWallet;
+
+    // Validate new name
+    if (!/^[a-zA-Z0-9_]{1,20}$/.test(newName)) {
+      await ctx.reply(
+        "Invalid wallet name. Please use only letters, numbers, and underscores (max 20 characters)."
+      );
+      return true;
+    }
+
+    // Check if name is already taken
+    const existingWallets = await getUserWallets(telegramId);
+    if (existingWallets.some((w) => w.wallet_name === newName)) {
+      await ctx.reply(
+        "This wallet name is already taken. Please choose a different name."
+      );
+      return true;
+    }
+
+    // Get the wallet to check if it's default
+    const oldWallet = await getWalletByName(telegramId, oldName);
+    const isDefault = oldWallet.is_default;
+
+    // Update wallet name
+    await updateWalletName(telegramId, oldName, newName);
+
+    // Clear renaming state
+    ctx.session.renameWallet = null;
+
+    // Show updated wallet details
+    const wallet = await getWalletByName(telegramId, newName);
+    const agentRuntime = await getAgentRuntime(wallet);
+    const balance = await agentRuntime.getBalance();
+
+    // Set default button text based on wallet status
+    const defaultBtnText = isDefault
+      ? "✅ Default Wallet"
+      : "⭐ Set as Default";
+
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: `🏷 Name: ${newName}`, callback_data: `rename_${newName}` }],
+        [{ text: defaultBtnText, callback_data: `toggle_default_${newName}` }],
+        [
+          { text: "💸 Withdraw APT", callback_data: `withdraw_APT_${newName}` },
+          {
+            text: "🔄 Withdraw Tokens",
+            callback_data: `withdraw_tokens_${newName}`,
+          },
+        ],
+        [
+          { text: "❌ Delete", callback_data: `delete_${newName}` },
+          { text: "← Back", callback_data: "back_to_wallets" },
+        ],
+      ],
+    };
+
+    await ctx.reply(
+      `✅ Wallet renamed successfully!\n\n` +
+        `💰 Balance: ${balance} APT\n` +
+        `📝 Wallet:\n` +
+        `\`${wallet.address}\``,
+      {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      }
+    );
+
+    return true;
+  } catch (error) {
+    console.error("Error processing wallet rename:", error);
+    await ctx.reply("Failed to rename wallet. Please try again.");
+    return true;
+  }
+};
+
+// Add handlers for wallet creation and import
+const handleCreateWallet = async (ctx) => {
+  try {
+    const telegramId = ctx.from.id.toString();
+    const wallets = await getUserWallets(telegramId);
+    const wallet = await generateAptosWallet(
+      telegramId,
+      null,
+      wallets.length === 1 // Set as default if it's the first wallet
+    );
+    // const { account } = await getSignerAndAccount(wallet);
+    // const seedPhrase = await account.generateMnemonic();
+
+    // Send wallet details
+    await ctx.editMessageText(
+      `✅ Generated new wallet:\n\n` +
+        `Address:\n` +
+        `\`${wallet.address}\`\n\n` +
+        `PK:\n` +
+        `\`${wallet.private_key}\`\n\n` +
+        // `Seed Phrase: \`${seedPhrase}\`\n\n` +
+        `⚠️ Make sure to save this seed phrase using pen and paper only. Do NOT copy-paste it anywhere. You could also import it to your wallet. After you finish saving/importing the wallet credentials, delete this message. The next will display the information.`,
+      {
+        parse_mode: "Markdown",
+      }
+    );
+  } catch (error) {
+    console.error("Error creating wallet:", error);
+    await ctx.editMessageText("Failed to create wallet. Please try again.");
+  }
+};
+
+// Modify import wallet handler to match the image
+const handleImportWalletStart = async (ctx) => {
+  try {
+    // Store in session that we're waiting for seed phrase or private key
+    ctx.session = {
+      ...ctx.session,
+      importWallet: {
+        type: "any",
+        isImporting: true,
+      },
+    };
+
+    await ctx.editMessageText(
+      "What's the mnemonic phrase or private key of this wallet?",
+      { reply_markup: { remove_keyboard: true } }
+    );
+  } catch (error) {
+    console.error("Error starting wallet import:", error);
+    await ctx.reply("Failed to start import process. Please try again.");
+  }
+};
+
+// Update handler for processing import message to handle both types automatically
+const handleImportMessage = async (ctx) => {
+  try {
+    // Check if we're in importing mode
+    if (!ctx.session?.importWallet?.isImporting) {
+      return false;
+    }
+
+    const input = ctx.message.text.trim();
+    const telegramId = ctx.from.id.toString();
+
+    // Generate a random wallet name
+    const walletName = `wallet_${Math.floor(Math.random() * 10000)}`;
+
+    // Determine input type (seed phrase or private key)
+    const inputType = input.includes(" ") ? "seed" : "private_key";
+
+    if (inputType === "private_key") {
+      // Validate private key
+      if (!/^[0-9a-fA-F]{64}$/.test(input)) {
+        await ctx.reply(
+          "Invalid private key format. Please provide a valid 64-character hex string."
+        );
+        return true;
+      }
+
+      // Import wallet with private key
+      const privateKey = new Ed25519PrivateKey(input);
+      const publicKey = privateKey.publicKey();
+      const address = publicKey.toAddress();
+
+      // Check if wallet already exists
+      const existingWallets = await getUserWallets(telegramId);
+      const existingWallet = existingWallets.find(
+        (w) => w.address === address.toString()
+      );
+
+      if (existingWallet) {
+        await ctx.reply(
+          `This wallet already exists with name: ${existingWallet.wallet_name}`
+        );
+        ctx.session.importWallet = null;
+        return true;
+      }
+
+      // Create new wallet
+      const wallet = await createWallet({
+        telegram_id: telegramId,
+        wallet_name: walletName,
+        private_key: input,
+        public_key: publicKey.toString(),
+        address: address.toString(),
+      });
+
+      // If this is the first wallet, set it as default
+      if (existingWallets.length === 0) {
+        await updateWalletStatus(telegramId, walletName, true);
+      }
+
+      // Clear import state
+      ctx.session.importWallet = null;
+
+      await ctx.reply(
+        `✅ Wallet imported successfully!\n\n` +
+          `Name: ${walletName}\n` +
+          `Address: \`${address.toString()}\`\n\n` +
+          `Use /wallets to see all your wallets.`,
+        { parse_mode: "Markdown" }
+      );
+    } else if (inputType === "seed") {
+      // Import using seed phrase
+      try {
+        const aptosConfig = new AptosConfig({
+          network: process.env.APTOS_NETWORK,
+        });
+        const aptos = new Aptos(aptosConfig);
+
+        // Derive account from mnemonic
+        const account = await aptos.deriveAccountFromMnemonic({
+          mnemonic: input,
+        });
+
+        const address = account.accountAddress.toString();
+
+        // Check if wallet already exists
+        const existingWallets = await getUserWallets(telegramId);
+        const existingWallet = existingWallets.find(
+          (w) => w.address === address
+        );
+
+        if (existingWallet) {
+          await ctx.reply(
+            `This wallet already exists with name: ${existingWallet.wallet_name}`
+          );
+          ctx.session.importWallet = null;
+          return true;
+        }
+
+        // Create new wallet
+        const wallet = await createWallet({
+          telegram_id: telegramId,
+          wallet_name: walletName,
+          private_key: account.privateKey.toString(),
+          public_key: account.publicKey.toString(),
+          address: address,
+        });
+
+        // If this is the first wallet, set it as default
+        if (existingWallets.length === 0) {
+          await updateWalletStatus(telegramId, walletName, true);
+        }
+
+        // Clear import state
+        ctx.session.importWallet = null;
+
+        await ctx.reply(
+          `✅ Wallet imported successfully!\n\n` +
+            `Name: ${walletName}\n` +
+            `Address: \`${address}\`\n\n` +
+            `Use /wallets to see all your wallets.`,
+          { parse_mode: "Markdown" }
+        );
+      } catch (error) {
+        console.error("Error importing from seed phrase:", error);
+        await ctx.reply("Invalid seed phrase. Please check and try again.");
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error processing wallet import:", error);
+    await ctx.reply("Failed to import wallet. Please try again.");
+    // Clear import state
+    ctx.session.importWallet = null;
+    return true;
+  }
+};
+
+// Update handleCallbackQuery to include new handlers
+const handleCallbackQuery = async (ctx) => {
+  const data = ctx.callbackQuery.data;
+
+  // Define a mapping of callback prefixes to their handler functions
+  const callbackHandlers = {
+    export_: handleWalletSelectionCallback,
+    withdraw_APT_: handleWithdrawAPT,
+    withdraw_tokens_: handleWithdrawTokens,
+    delete_: handleDeleteWallet,
+    rename_: handleRenameWallet,
+    toggle_default_: handleToggleDefaultWallet,
+    create_wallet: handleCreateWallet,
+    import_wallet_start: handleImportWalletStart,
+    back_to_wallets: handleBackToWallets,
+  };
+
+  // Find the matching handler based on the callback data prefix
+  const handler = Object.entries(callbackHandlers).find(
+    ([prefix, _]) =>
+      prefix === data ||
+      (prefix !== "back_to_wallets" &&
+        prefix !== "create_wallet" &&
+        prefix !== "import_wallet_start" &&
+        data.startsWith(prefix))
+  );
+
+  // Execute the handler if found
+  if (handler) {
+    await handler[1](ctx);
   }
 };
 
 export {
   generateAptosWallet,
   getOrCreateDefaultWallet,
-  getSigner,
-  importWallet,
-  setDefaultWallet,
+  getSignerAndAccount,
   getBalance,
-  listWallets,
+  getWallets,
+  handleCallbackQuery,
+  handleRenameMessage,
+  handleImportMessage,
 };
