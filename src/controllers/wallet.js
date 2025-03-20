@@ -1,4 +1,9 @@
-import { Ed25519PrivateKey, Account } from "@aptos-labs/ts-sdk";
+import {
+  Ed25519PrivateKey,
+  Account,
+  PrivateKeyVariants,
+  PrivateKey,
+} from "@aptos-labs/ts-sdk";
 import { LocalSigner } from "move-agent-kit";
 
 import {
@@ -6,6 +11,8 @@ import {
   getUserWallets,
   updateWalletStatus,
 } from "../models/wallet.js";
+import { getAgentRunTime } from "./agent.js";
+import { decrypt } from "../utils/encrypt.js";
 
 const validatePrivateKey = (privateKey) => {
   try {
@@ -22,17 +29,8 @@ const validatePrivateKey = (privateKey) => {
 
 const generateAptosWallet = async (telegramId, walletName = "default") => {
   try {
-    // // Generate new private key
-    // const privateKey = new Ed25519PrivateKey();
-
-    // // Get public key and address
-    // const publicKey = privateKey.publicKey();
-    // const address = publicKey.toAddress();
-
     const AptosAccount = Account.generate();
-    console.log(AptosAccount);
 
-    // Save wallet to database
     const wallet = await createWallet({
       telegram_id: telegramId,
       wallet_name: walletName,
@@ -50,36 +48,34 @@ const generateAptosWallet = async (telegramId, walletName = "default") => {
 
 const getOrCreateDefaultWallet = async (telegramId, walletName = "default") => {
   try {
-    console.log("getOrCreateDefaultWallet", telegramId, walletName);
-    // Get user's wallets
     const wallets = await getUserWallets(telegramId);
-    console.log(wallets);
-
-    // If user has no wallets, create a default one
     if (!wallets || wallets.length === 0) {
       return await generateAptosWallet(telegramId, walletName);
     }
 
-    // Return the default wallet or the first available wallet
-    return wallets.find((w) => w.is_default) || wallets[0];
+    const wallet = wallets.find((w) => w.is_default) || wallets[0];
+    wallet.private_key = decrypt(wallet.private_key);
+    return wallet;
   } catch (error) {
     console.error("Error getting or creating default wallet:", error);
     throw error;
   }
 };
 
-const getSignerByTelegramId = async (telegramId) => {
-  const wallet = await getOrCreateDefaultWallet(telegramId);
-  const account = await aptos.deriveAccountFromPrivateKey({
-    privateKey: new Ed25519PrivateKey(
-      PrivateKey.formatPrivateKey(
-        process.env.PRIVATE_KEY,
-        PrivateKeyVariants.Ed25519
-      )
-    ),
+const getSigner = async (wallet) => {
+  if (!wallet.private_key) {
+    throw new Error("Private key is not set for this wallet.");
+  }
+  const privateKey = PrivateKey.formatPrivateKey(
+    wallet.private_key,
+    PrivateKeyVariants.Ed25519
+  );
+
+  const account = await Account.fromPrivateKey({
+    privateKey: new Ed25519PrivateKey(privateKey),
   });
 
-  const signer = new LocalSigner(account, Network.MAINNET);
+  const signer = new LocalSigner(account, process.env.APTOS_NETWORK);
   return signer;
 };
 
@@ -213,10 +209,48 @@ const setDefaultWallet = async (ctx) => {
   }
 };
 
+const getBalance = async (ctx) => {
+  const wallet = await getOrCreateDefaultWallet(ctx.from.id.toString());
+  const signer = await getSigner(wallet);
+  const agentRunTime = await getAgentRunTime(signer);
+  console.log(wallet.address);
+  const balance = await agentRunTime.getBalance(wallet.address);
+  await ctx.reply(`Your balance is ${balance} APT.`);
+};
+
+const listWallets = async (ctx) => {
+  try {
+    const telegramId = ctx.from.id.toString();
+    const wallets = await getUserWallets(telegramId);
+
+    if (!wallets || wallets.length === 0) {
+      await ctx.reply(
+        "You don't have any wallets yet. Use /wallet create to create one."
+      );
+      return;
+    }
+
+    let message = "🔑 Your wallets:\n\n";
+    for (const wallet of wallets) {
+      message += `${wallet.is_default ? "✅ " : ""}${wallet.wallet_name}\n`;
+      message += `Address: \`${wallet.address}\`\n\n`;
+    }
+
+    message += "\nUse /setdefault <wallet_name> to change your default wallet.";
+
+    await ctx.reply(message, { parse_mode: "Markdown" });
+  } catch (error) {
+    console.error("Error listing wallets:", error);
+    await ctx.reply("Failed to list wallets. Please try again.");
+  }
+};
+
 export {
   generateAptosWallet,
   getOrCreateDefaultWallet,
-  getSignerByTelegramId,
+  getSigner,
   importWallet,
   setDefaultWallet,
+  getBalance,
+  listWallets,
 };

@@ -1,14 +1,11 @@
 import { AgentRuntime } from "move-agent-kit";
-import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
+import { Aptos, AptosConfig } from "@aptos-labs/ts-sdk";
 
-import { getSignerByTelegramId } from "./wallet.js";
-
-const getAgentRunTime = async (telegramId) => {
+const getAgentRunTime = async (signer) => {
   const aptosConfig = new AptosConfig({
-    network: Network.MAINNET,
+    network: process.env.APTOS_NETWORK,
   });
   const aptos = new Aptos(aptosConfig);
-  const signer = await getSignerByTelegramId(telegramId);
   const agentRunTime = new AgentRuntime({
     aptos,
     signer,

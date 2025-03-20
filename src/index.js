@@ -1,7 +1,7 @@
 import { Bot } from "grammy";
 import dotenv from "dotenv";
 
-import { command } from "./controllers/index.js";
+import { command, wallet } from "./controllers/index.js";
 
 // Load environment variables
 dotenv.config();
@@ -9,6 +9,8 @@ const bot = new Bot(process.env.BOT_TOKEN);
 
 // Handle commands
 bot.command("start", command.start);
+bot.command("wallets", wallet.listWallets);
+bot.command("balance", wallet.getBalance);
 // bot.command("import", wallet.importWallet);
 // bot.command("setdefault", wallet.setDefaultWallet);
 

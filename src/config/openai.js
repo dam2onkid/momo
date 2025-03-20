@@ -8,8 +8,9 @@ if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required");
 export const openai = new ChatOpenAI({
   openAIApiKey: process.env.OPENAI_API_KEY,
   temperature: 0.7,
-  modelName: "openai/gpt-4o-mini",
-  streaming: true,
+  maxTokens: 500,
+  maxRetries: 3,
+  modelName: "mistralai/mistral-7b-instruct",
   configuration: {
     baseURL: "https://openrouter.ai/api/v1",
     defaultHeaders: {

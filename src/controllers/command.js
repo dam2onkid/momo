@@ -70,15 +70,15 @@ const handleTextMessage = async (ctx) => {
       }
 
       // Process the message with AI
-      // const aiResponse = await openai.invoke(cleanMessage);
-      // await ctx.reply(aiResponse.content);
+      const aiResponse = await openai.invoke(cleanMessage);
+      await ctx.reply(aiResponse.content);
       return;
     }
 
     // Handle direct messages (private chat)
     if (!isGroupChat) {
-      // const aiResponse = await openai.invoke(message);
-      // await ctx.reply(aiResponse.content);
+      const aiResponse = await openai.invoke(message);
+      await ctx.reply(aiResponse.content);
     }
   } catch (error) {
     console.error("Error handling message:", error);
