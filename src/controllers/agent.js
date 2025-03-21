@@ -3,7 +3,7 @@ import {
   AptosConfig,
   Ed25519PrivateKey,
   PrivateKey,
-  PrivateKeyVariants,
+  Account,
 } from "@aptos-labs/ts-sdk";
 import { AgentRuntime, LocalSigner } from "move-agent-kit";
 
@@ -12,13 +12,9 @@ const getAgentRuntime = async (wallet) => {
     network: process.env.APTOS_NETWORK,
   });
   const aptos = new Aptos(aptosConfig);
-  const account = await aptos.deriveAccountFromPrivateKey({
-    privateKey: new Ed25519PrivateKey(
-      PrivateKey.formatPrivateKey(
-        wallet.private_key,
-        PrivateKeyVariants.Ed25519
-      )
-    ),
+  const privateKey = PrivateKey.formatPrivateKey(wallet.private_key, "ed25519");
+  const account = Account.fromPrivateKey({
+    privateKey: new Ed25519PrivateKey(privateKey),
   });
 
   const signer = new LocalSigner(account, process.env.APTOS_NETWORK);

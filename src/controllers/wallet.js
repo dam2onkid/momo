@@ -5,6 +5,7 @@ import {
   PrivateKey,
   AptosConfig,
   Aptos,
+  SigningSchemeInput,
 } from "@aptos-labs/ts-sdk";
 import { LocalSigner } from "move-agent-kit";
 
@@ -42,7 +43,9 @@ const generateAptosWallet = async (
   isDefault = false
 ) => {
   try {
-    const AptosAccount = Account.generate();
+    const AptosAccount = Account.generate({
+      scheme: SigningSchemeInput.Ed25519,
+    });
 
     walletName =
       walletName ||
