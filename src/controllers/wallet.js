@@ -17,7 +17,6 @@ import {
   updateWalletName,
 } from "../models/wallet.js";
 import { getAgentRuntime } from "./agent.js";
-import { decrypt } from "../utils/encrypt.js";
 
 const aptosConfig = new AptosConfig({
   network: process.env.APTOS_NETWORK,
@@ -75,7 +74,7 @@ const getOrCreateDefaultWallet = async (telegramId, walletName) => {
   try {
     const wallets = await getUserWallets(telegramId);
     if (!wallets || wallets.length === 0) {
-      return await generateAptosWallet(telegramId, walletName, true);
+      return await generateAptosWallet(telegramId, walletName);
     }
 
     const wallet = wallets.find((w) => w.is_default) || wallets[0];
@@ -170,6 +169,7 @@ const getWallets = async (ctx) => {
     ];
 
     await ctx.reply(`📒 Wallets (${wallets.length})`, {
+      parse_mode: "Markdown",
       reply_markup: { inline_keyboard: [...walletButtons, ...actionButtons] },
     });
   } catch (error) {
@@ -184,6 +184,7 @@ const getWallets = async (ctx) => {
     ];
 
     await ctx.reply(`📒 Wallets (0)`, {
+      parse_mode: "Markdown",
       reply_markup: {
         inline_keyboard: keyboard,
       },
@@ -207,7 +208,6 @@ const handleWalletSelectionCallback = async (ctx) => {
 
     // Get balance
     const agentRuntime = await getAgentRuntime(wallet);
-    console.log("agentRuntime", agentRuntime);
     const balance = await agentRuntime.getBalance();
 
     // Set default button text based on current status
@@ -544,7 +544,7 @@ const handleCreateWallet = async (ctx) => {
     const wallet = await generateAptosWallet(
       telegramId,
       null,
-      wallets.length === 1 // Set as default if it's the first wallet
+      wallets.length === 0 // Set as default if it's the first wallet
     );
     // const { account } = await getSignerAndAccount(wallet);
     // const seedPhrase = await account.generateMnemonic();
@@ -580,10 +580,11 @@ const handleImportWalletStart = async (ctx) => {
       },
     };
 
-    await ctx.editMessageText(
-      "What's the mnemonic phrase or private key of this wallet?",
-      { reply_markup: { remove_keyboard: true } }
-    );
+    // Send a separate message to instruct the user
+    await ctx.reply("Support for importing wallets coming soon!");
+    // await ctx.reply(
+    //   "Please send your mnemonic phrase or private key as a direct message."
+    // );
   } catch (error) {
     console.error("Error starting wallet import:", error);
     await ctx.reply("Failed to start import process. Please try again.");
@@ -593,6 +594,7 @@ const handleImportWalletStart = async (ctx) => {
 // Update handler for processing import message to handle both types automatically
 const handleImportMessage = async (ctx) => {
   try {
+    // TASK: do not work with this function
     // Check if we're in importing mode
     if (!ctx.session?.importWallet?.isImporting) {
       return false;
@@ -609,17 +611,24 @@ const handleImportMessage = async (ctx) => {
 
     if (inputType === "private_key") {
       // Validate private key
-      if (!/^[0-9a-fA-F]{64}$/.test(input)) {
-        await ctx.reply(
-          "Invalid private key format. Please provide a valid 64-character hex string."
-        );
-        return true;
-      }
+      const inputPrivateKey = PrivateKey.formatPrivateKey(
+        input,
+        PrivateKeyVariants.Ed25519
+      );
+      // if (!validatePrivateKey(inputPrivateKey)) {
+      //   await ctx.reply(
+      //     "Invalid private key format. Please provide a valid 64-character hex string."
+      //   );
+      //   return true;
+      // }
 
       // Import wallet with private key
-      const privateKey = new Ed25519PrivateKey(input);
-      const publicKey = privateKey.publicKey();
-      const address = publicKey.toAddress();
+      const privateKey = new Ed25519PrivateKey(inputPrivateKey);
+      console.log("privateKey", privateKey);
+      const account = Account.fromPrivateKey(privateKey);
+      console.log("account", account);
+      const publicKey = account.publicKey;
+      const address = account.accountAddress;
 
       // Check if wallet already exists
       const existingWallets = await getUserWallets(telegramId);
@@ -662,11 +671,6 @@ const handleImportMessage = async (ctx) => {
     } else if (inputType === "seed") {
       // Import using seed phrase
       try {
-        const aptosConfig = new AptosConfig({
-          network: process.env.APTOS_NETWORK,
-        });
-        const aptos = new Aptos(aptosConfig);
-
         // Derive account from mnemonic
         const account = await aptos.deriveAccountFromMnemonic({
           mnemonic: input,

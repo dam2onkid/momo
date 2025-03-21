@@ -1,6 +1,6 @@
 import { TABLES } from "./const.js";
 import { supabase } from "../config/supabase.js";
-import { encrypt } from "../utils/encrypt.js";
+import { decrypt, encrypt } from "../utils/encrypt.js";
 
 // Wallet operations
 const createWallet = async (walletData) => {
@@ -9,10 +9,9 @@ const createWallet = async (walletData) => {
     .insert({
       telegram_id: walletData.telegram_id,
       wallet_name: walletData.wallet_name,
-      // private_key: encrypt(walletData.private_key),
-      private_key: walletData.private_key,
-      public_key: walletData.public_key,
-      address: walletData.address,
+      private_key: encrypt(walletData.private_key),
+      public_key: encrypt(walletData.public_key),
+      address: encrypt(walletData.address),
       is_default: walletData.is_default || false,
     })
     .select();
@@ -29,6 +28,11 @@ const getUserWallets = async (telegramId) => {
     .eq("deleted", false);
 
   if (error) throw error;
+  data.forEach((wallet) => {
+    wallet.private_key = decrypt(wallet.private_key);
+    wallet.public_key = decrypt(wallet.public_key);
+    wallet.address = decrypt(wallet.address);
+  });
   return data;
 };
 
@@ -42,6 +46,9 @@ const getWalletByName = async (telegramId, walletName) => {
     .single();
 
   if (error) throw error;
+  data.private_key = decrypt(data.private_key);
+  data.public_key = decrypt(data.public_key);
+  data.address = decrypt(data.address);
   return data;
 };
 

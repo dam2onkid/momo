@@ -10,9 +10,9 @@ export const openai = new ChatOpenAI({
   temperature: 0.7,
   maxTokens: 500,
   maxRetries: 3,
-  modelName: "mistralai/mistral-7b-instruct",
+  modelName: "grok-2-1212",
   configuration: {
-    baseURL: "https://openrouter.ai/api/v1",
+    baseURL: "https://api.x.ai/v1",
     defaultHeaders: {
       "HTTP-Referer": "http://localhost:3000",
       "X-Title": "Momo Bot",
