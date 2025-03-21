@@ -154,7 +154,7 @@ const getWallets = async (ctx) => {
     const walletButtons = wallets.map((wallet) => [
       {
         text: `${wallet.wallet_name}${wallet.is_default ? " ✅" : ""}`,
-        callback_data: `export_${wallet.wallet_name}`,
+        callback_data: `wallet_${wallet.wallet_name}`,
       },
     ]);
 
@@ -166,13 +166,8 @@ const getWallets = async (ctx) => {
       ],
     ];
 
-    console.log("walletButtons", walletButtons);
-    console.log("actionButtons", actionButtons);
-    // Combine all buttons
-    const keyboard = [...walletButtons, ...actionButtons];
-
     await ctx.reply(`📒 Wallets (${wallets.length})`, {
-      reply_markup: { inline_keyboard: keyboard },
+      reply_markup: { inline_keyboard: [...walletButtons, ...actionButtons] },
     });
   } catch (error) {
     console.error("Error listing wallets:", error);
@@ -196,9 +191,9 @@ const getWallets = async (ctx) => {
 const handleWalletSelectionCallback = async (ctx) => {
   try {
     const data = ctx.callbackQuery.data;
-    if (!data.startsWith("export_")) return;
+    if (!data.startsWith("wallet_")) return;
 
-    const walletName = data.replace("export_", "");
+    const walletName = data.replace("wallet_", "");
     const telegramId = ctx.from.id.toString();
 
     const wallet = await getWalletByName(telegramId, walletName);
@@ -209,6 +204,7 @@ const handleWalletSelectionCallback = async (ctx) => {
 
     // Get balance
     const agentRuntime = await getAgentRuntime(wallet);
+    console.log("agentRuntime", agentRuntime);
     const balance = await agentRuntime.getBalance();
 
     // Set default button text based on current status
@@ -396,7 +392,7 @@ const handleBackToWallets = async (ctx) => {
     const walletButtons = wallets.map((wallet) => [
       {
         text: `${wallet.wallet_name}${wallet.is_default ? " ✅" : ""}`,
-        callback_data: `export_${wallet.wallet_name}`,
+        callback_data: `wallet_${wallet.wallet_name}`,
       },
     ]);
 
@@ -735,7 +731,7 @@ const handleCallbackQuery = async (ctx) => {
 
   // Define a mapping of callback prefixes to their handler functions
   const callbackHandlers = {
-    export_: handleWalletSelectionCallback,
+    wallet_: handleWalletSelectionCallback,
     withdraw_APT_: handleWithdrawAPT,
     withdraw_tokens_: handleWithdrawTokens,
     delete_: handleDeleteWallet,
