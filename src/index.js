@@ -2,6 +2,7 @@ import { Bot, session } from "grammy";
 import dotenv from "dotenv";
 
 import { command, wallet } from "./controllers/index.js";
+// import { initTokenMonitoring } from "./utils/tokenMonitor.js";
 
 // Load environment variables
 dotenv.config();
@@ -50,3 +51,9 @@ bot.catch((err) => {
 // Start the bot
 console.log("Starting Momo Bot...");
 bot.start();
+
+// Initialize token monitoring (will run in the background)
+// FIXME: It doesn't work, fix later
+// initTokenMonitoring(bot).catch((err) => {
+//   console.error("Failed to initialize token monitoring:", err);
+// });

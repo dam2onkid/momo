@@ -711,35 +711,35 @@ const handleImportMessage = async (ctx) => {
 
 // Update handleCallbackQuery to include new handlers
 const handleCallbackQuery = async (ctx) => {
-  const data = ctx.callbackQuery.data;
+  const callbackData = ctx.callbackQuery.data;
 
-  // Define a mapping of callback prefixes to their handler functions
-  const callbackHandlers = {
-    wallet_: handleWalletSelectionCallback,
-    withdraw_APT_: handleWithdrawAPT,
-    withdraw_tokens_: handleWithdrawTokens,
-    delete_: handleDeleteWallet,
-    rename_: handleRenameWallet,
-    toggle_default_: handleToggleDefaultWallet,
-    create_wallet: handleCreateWallet,
-    import_wallet_start: handleImportWalletStart,
-    back_to_wallets: handleBackToWallets,
-  };
-
-  // Find the matching handler based on the callback data prefix
-  const handler = Object.entries(callbackHandlers).find(
-    ([prefix, _]) =>
-      prefix === data ||
-      (prefix !== "back_to_wallets" &&
-        prefix !== "create_wallet" &&
-        prefix !== "import_wallet_start" &&
-        data.startsWith(prefix))
-  );
-
-  // Execute the handler if found
-  if (handler) {
-    await handler[1](ctx);
+  try {
+    if (callbackData === "create_wallet") {
+      await handleCreateWallet(ctx);
+    } else if (callbackData === "import_wallet_start") {
+      await handleImportWalletStart(ctx);
+    } else if (callbackData === "check_balance") {
+      await getBalance(ctx);
+    } else if (callbackData.startsWith("wallet_")) {
+      await handleWalletSelectionCallback(ctx);
+    } else if (callbackData.startsWith("set_default_")) {
+      await handleToggleDefaultWallet(ctx);
+    } else if (callbackData.startsWith("rename_")) {
+      await handleRenameWallet(ctx);
+    } else if (callbackData.startsWith("delete_")) {
+      await handleDeleteWallet(ctx);
+    } else if (callbackData === "back_to_wallets") {
+      await handleBackToWallets(ctx);
+    }
+  } catch (error) {
+    console.error("Error handling callback query:", error);
+    await ctx.reply(
+      "Sorry, there was an error processing your request. Please try again."
+    );
   }
+
+  // Answer the callback query to clear the loading state
+  await ctx.answerCallbackQuery();
 };
 
 export {
