@@ -21,7 +21,6 @@ bot.use(
 // Handle commands
 bot.command("start", command.start);
 bot.command("wallet", wallet.getWallets);
-bot.command("balance", wallet.getBalance);
 
 // Handle text messages and mentions
 bot.on("message:text", async (ctx, next) => {

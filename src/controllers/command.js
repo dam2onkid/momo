@@ -41,12 +41,10 @@ const start = async (ctx) => {
   // Get or create default wallet
   const wallet = await getOrCreateDefaultWallet(telegramId);
   await ctx.reply(
-    `Welcome to Momo Bot! 👋\n\nI am your AI trading assistant for Aptos.\n\n` +
+    `Meow! Welcome to Momo Witch! 😺\n\nI'm your purr-sonal crypto assistant for Aptos! Much trade, very profit, wow! \n\nCan haz tokens? Stonks only go up! 📈\n\n` +
       `Your default wallet address: \`${wallet.address}\`\n\n` +
       `Available commands:\n` +
-      `/wallet - Manage your wallets\n` +
-      `/balance - Check wallet balance\n` +
-      `/trade - Start trading`,
+      `/wallet - Manage your wallets\n`,
     { parse_mode: "Markdown" }
   );
 };
