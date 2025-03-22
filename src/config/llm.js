@@ -3,10 +3,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required");
+if (!process.env.XAI_API_KEY) throw new Error("XAI_API_KEY is required");
 
-export const openai = new ChatOpenAI({
-  openAIApiKey: process.env.OPENAI_API_KEY,
+export const llm = new ChatOpenAI({
+  openAIApiKey: process.env.XAI_API_KEY,
   temperature: 0.7,
   maxTokens: 500,
   maxRetries: 3,
@@ -14,7 +14,7 @@ export const openai = new ChatOpenAI({
   configuration: {
     baseURL: "https://api.x.ai/v1",
     defaultHeaders: {
-      "HTTP-Referer": "http://localhost:3000",
+      "HTTP-Referer": "https://t.me/momo_aptos_bot",
       "X-Title": "Momo Bot",
     },
   },

@@ -1,8 +1,9 @@
 import * as R from "remeda";
+import { HumanMessage } from "@langchain/core/messages";
 
-import { openai } from "../config/openai.js";
 import { getOrCreateDefaultWallet } from "./wallet.js";
 import { createOrUpdateUser } from "../models/telegramUser.js";
+import { initializeAgent } from "./agent.js";
 
 const errorHandler = async (err, ctx) => {
   console.error(`Error while handling update ${ctx.update.update_id}:`, err);
@@ -53,32 +54,46 @@ const handleTextMessage = async (ctx) => {
   try {
     const message = ctx.message.text;
     const botUsername = ctx.me.username;
-    const isMentioned = message.includes(`@${botUsername}`);
-    const isGroupChat = ctx.chat.type !== "private";
+    // const msg = await llm.invoke(message);
+    // await ctx.reply(msg.content);
+    // return;
+    // const isMentioned = message.includes(`@${botUsername}`);
+    // const isGroupChat = ctx.chat.type !== "private";
+    const wallet = await getOrCreateDefaultWallet(ctx.from.id.toString());
+    const { agent, config } = await initializeAgent(wallet);
 
     // Handle mentions in group chats
-    if (isGroupChat && isMentioned) {
-      // Remove bot mention from message
-      const cleanMessage = message.replace(`@${botUsername}`, "").trim();
-
-      // If message is empty after removing mention, send default response
-      if (!cleanMessage) {
-        await ctx.reply(`Hi @${ctx.from.username}! How can I help you today?`, {
-          reply_to_message_id: ctx.message.message_id,
-        });
-        return;
-      }
-
-      // Process the message with AI
-      const aiResponse = await openai.invoke(cleanMessage);
-      await ctx.reply(aiResponse.content);
+    const cleanMessage = message.replace(`@${botUsername}`, "").trim();
+    if (!cleanMessage) {
+      await ctx.reply(`Hi @${ctx.from.username}! How can I help you today?`, {
+        reply_to_message_id: ctx.message.message_id,
+      });
       return;
     }
 
-    // Handle direct messages (private chat)
-    if (!isGroupChat) {
-      const aiResponse = await openai.invoke(message);
-      await ctx.reply(aiResponse.content);
+    const stream = await agent.stream(
+      { messages: [new HumanMessage(ctx.message?.text || "")] },
+      config
+    );
+    for await (const chunk of stream) {
+      if (!("agent" in chunk) || !chunk.agent.messages[0]?.content) continue;
+
+      const messageContent = chunk.agent.messages[0].content;
+      let responseText = "";
+
+      if (Array.isArray(messageContent)) {
+        responseText =
+          messageContent
+            .filter((msg) => msg.type === "text")
+            .map((msg) => msg.text)
+            .join("\n\n") || "No text response available.";
+      } else if (typeof messageContent === "object") {
+        responseText = JSON.stringify(messageContent, null, 2);
+      } else {
+        responseText = String(messageContent);
+      }
+
+      await ctx.reply(responseText);
     }
   } catch (error) {
     console.error("Error handling message:", error);

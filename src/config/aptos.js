@@ -1,4 +1,10 @@
-import { Aptos, Network, Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
+import {
+  Aptos,
+  AptosConfig,
+  Ed25519PrivateKey,
+  PrivateKey,
+  PrivateKeyVariants,
+} from "@aptos-labs/ts-sdk";
 import { LocalSigner } from "move-agent-kit";
 import dotenv from "dotenv";
 
@@ -8,22 +14,24 @@ if (!process.env.APTOS_PRIVATE_KEY)
   throw new Error("APTOS_PRIVATE_KEY is required");
 if (!process.env.APTOS_NETWORK) throw new Error("APTOS_NETWORK is required");
 
-const getNetwork = (network) => {
-  switch (network.toLowerCase()) {
-    case "mainnet":
-      return Network.MAINNET;
-    case "testnet":
-      return Network.TESTNET;
-    case "devnet":
-      return Network.DEVNET;
-    default:
-      return Network.MAINNET;
+const aptosConfig = new AptosConfig({
+  network: process.env.APTOS_NETWORK,
+});
+const aptos = new Aptos(aptosConfig);
+
+const getSignerAndAccount = async (privateKey) => {
+  if (!privateKey) {
+    throw new Error("Private key is not set for this wallet.");
   }
+
+  const account = await aptos.deriveAccountFromPrivateKey({
+    privateKey: new Ed25519PrivateKey(
+      PrivateKey.formatPrivateKey(privateKey, PrivateKeyVariants.Ed25519)
+    ),
+  });
+
+  const signer = new LocalSigner(account, process.env.APTOS_NETWORK);
+  return { signer, account };
 };
 
-export const aptosClient = new Aptos({
-  network: getNetwork(process.env.APTOS_NETWORK),
-  signer: new LocalSigner(
-    Ed25519PrivateKey.fromHex(process.env.APTOS_PRIVATE_KEY)
-  ),
-});
+export { aptos, aptosConfig, getSignerAndAccount };

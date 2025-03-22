@@ -1,6 +1,6 @@
 export { supabase } from "./supabase.js";
-export { aptosClient } from "./aptos.js";
-export { openai } from "./openai.js";
+export { aptos, aptosConfig, getSignerAndAccount } from "./aptos.js";
+export { llm } from "./llm.js";
 
 // Environment variables validation
 import dotenv from "dotenv";
@@ -11,10 +11,10 @@ const requiredEnvVars = [
   "BOT_TOKEN",
   "SUPABASE_URL",
   "SUPABASE_ANON_KEY",
-  "OPENAI_API_KEY",
   "APTOS_PRIVATE_KEY",
   "APTOS_NETWORK",
   "ENCRYPTION_KEY",
+  "XAI_API_KEY",
 ];
 
 for (const envVar of requiredEnvVars) {

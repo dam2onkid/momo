@@ -1,13 +1,4 @@
-import {
-  Ed25519PrivateKey,
-  Account,
-  PrivateKeyVariants,
-  PrivateKey,
-  AptosConfig,
-  Aptos,
-  SigningSchemeInput,
-} from "@aptos-labs/ts-sdk";
-import { LocalSigner } from "move-agent-kit";
+import { Account, SigningSchemeInput } from "@aptos-labs/ts-sdk";
 
 import {
   createWallet,
@@ -17,11 +8,7 @@ import {
   updateWalletName,
 } from "../models/wallet.js";
 import { getAgentRuntime } from "./agent.js";
-
-const aptosConfig = new AptosConfig({
-  network: process.env.APTOS_NETWORK,
-});
-const aptos = new Aptos(aptosConfig);
+import { aptos, getSignerAndAccount } from "../config/aptos.js";
 
 const validatePrivateKey = (privateKey) => {
   try {
@@ -83,23 +70,6 @@ const getOrCreateDefaultWallet = async (telegramId, walletName) => {
     console.error("Error getting or creating default wallet:", error);
     throw error;
   }
-};
-
-const getSignerAndAccount = async (wallet) => {
-  if (!wallet.private_key) {
-    throw new Error("Private key is not set for this wallet.");
-  }
-  const account = await aptos.deriveAccountFromPrivateKey({
-    privateKey: new Ed25519PrivateKey(
-      PrivateKey.formatPrivateKey(
-        wallet.private_key,
-        PrivateKeyVariants.Ed25519
-      )
-    ),
-  });
-
-  const signer = new LocalSigner(account, process.env.APTOS_NETWORK);
-  return { signer, account };
 };
 
 const getBalance = async (ctx) => {
@@ -207,7 +177,7 @@ const handleWalletSelectionCallback = async (ctx) => {
     }
 
     // Get balance
-    const agentRuntime = await getAgentRuntime(wallet);
+    const agentRuntime = await getAgentRuntime(wallet.private_key);
     const balance = await agentRuntime.getBalance();
 
     // Set default button text based on current status
