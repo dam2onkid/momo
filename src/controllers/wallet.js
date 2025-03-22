@@ -6,6 +6,7 @@ import {
   getWalletByName,
   updateWalletStatus,
   updateWalletName,
+  deleteWallet,
 } from "../models/wallet.js";
 import { getAgentRuntime } from "./agent.js";
 import { aptos, getSignerAndAccount } from "../config/aptos.js";
@@ -76,7 +77,7 @@ const getBalance = async (ctx) => {
   try {
     const telegramId = ctx.from.id.toString();
     const wallet = await getOrCreateDefaultWallet(telegramId);
-    const agentRuntime = await getAgentRuntime(wallet);
+    const agentRuntime = await getAgentRuntime(wallet.private_key);
     const balance = await agentRuntime.getBalance();
 
     // Create inline keyboard with actions
@@ -262,7 +263,7 @@ const handleToggleDefaultWallet = async (ctx) => {
 
     // Get updated wallet with balance
     const updatedWallet = await getWalletByName(telegramId, walletName);
-    const agentRuntime = await getAgentRuntime(updatedWallet);
+    const agentRuntime = await getAgentRuntime(updatedWallet.private_key);
     const balance = await agentRuntime.getBalance();
 
     // Set default button text based on new status
@@ -347,9 +348,13 @@ const handleDeleteWallet = async (ctx) => {
   try {
     const data = ctx.callbackQuery.data;
     const walletName = data.replace("delete_", "");
-    await ctx.reply(
-      `Delete wallet functionality for ${walletName} coming soon!`
-    );
+    const telegramId = ctx.from.id.toString();
+
+    await deleteWallet(telegramId, walletName);
+    await Promise.all([
+      ctx.reply(`Wallet "${walletName}" deleted successfully.`),
+      handleBackToWallets(ctx),
+    ]);
   } catch (error) {
     console.error("Error handling wallet deletion:", error);
     await ctx.reply("Failed to delete wallet. Please try again.");
@@ -461,7 +466,7 @@ const handleRenameMessage = async (ctx) => {
 
     // Show updated wallet details
     const wallet = await getWalletByName(telegramId, newName);
-    const agentRuntime = await getAgentRuntime(wallet);
+    const agentRuntime = await getAgentRuntime(wallet.private_key);
     const balance = await agentRuntime.getBalance();
 
     // Set default button text based on wallet status
@@ -516,8 +521,6 @@ const handleCreateWallet = async (ctx) => {
       null,
       wallets.length === 0 // Set as default if it's the first wallet
     );
-    // const { account } = await getSignerAndAccount(wallet);
-    // const seedPhrase = await account.generateMnemonic();
 
     // Send wallet details
     await ctx.editMessageText(
@@ -526,10 +529,14 @@ const handleCreateWallet = async (ctx) => {
         `\`${wallet.address}\`\n\n` +
         `PK:\n` +
         `\`${wallet.private_key}\`\n\n` +
-        // `Seed Phrase: \`${seedPhrase}\`\n\n` +
         `⚠️ Make sure to save this seed phrase using pen and paper only. Do NOT copy-paste it anywhere. You could also import it to your wallet. After you finish saving/importing the wallet credentials, delete this message. The next will display the information.`,
       {
         parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "← Back", callback_data: "back_to_wallets" }],
+          ],
+        },
       }
     );
   } catch (error) {
@@ -742,6 +749,4 @@ export {
   getBalance,
   getWallets,
   handleCallbackQuery,
-  handleRenameMessage,
-  handleImportMessage,
 };

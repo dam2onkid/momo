@@ -4,6 +4,7 @@ import {
   Ed25519PrivateKey,
   PrivateKey,
   PrivateKeyVariants,
+  Account,
 } from "@aptos-labs/ts-sdk";
 import { LocalSigner } from "move-agent-kit";
 import dotenv from "dotenv";
@@ -23,8 +24,7 @@ const getSignerAndAccount = async (privateKey) => {
   if (!privateKey) {
     throw new Error("Private key is not set for this wallet.");
   }
-
-  const account = await aptos.deriveAccountFromPrivateKey({
+  const account = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(
       PrivateKey.formatPrivateKey(privateKey, PrivateKeyVariants.Ed25519)
     ),

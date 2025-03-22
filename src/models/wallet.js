@@ -17,6 +17,9 @@ const createWallet = async (walletData) => {
     .select();
 
   if (error) throw error;
+  data[0].private_key = decrypt(data[0].private_key);
+  data[0].public_key = decrypt(data[0].public_key);
+  data[0].address = decrypt(data[0].address);
   return data[0];
 };
 
@@ -84,4 +87,23 @@ export async function updateWalletName(telegramId, oldName, newName) {
   if (error) throw error;
 }
 
-export { createWallet, getUserWallets, getWalletByName, updateWalletStatus };
+const deleteWallet = async (telegramId, walletName) => {
+  const { error } = await supabase
+    .from(TABLES.WALLETS)
+    .update({
+      deleted: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("telegram_id", telegramId)
+    .eq("wallet_name", walletName);
+
+  if (error) throw error;
+};
+
+export {
+  createWallet,
+  getUserWallets,
+  getWalletByName,
+  updateWalletStatus,
+  deleteWallet,
+};
