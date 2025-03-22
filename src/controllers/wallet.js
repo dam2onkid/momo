@@ -244,6 +244,7 @@ const handleToggleDefaultWallet = async (ctx) => {
     const telegramId = ctx.from.id.toString();
 
     const wallet = await getWalletByName(telegramId, walletName);
+
     if (!wallet) {
       await ctx.reply(`Wallet "${walletName}" not found.`);
       return;
@@ -712,7 +713,6 @@ const handleImportMessage = async (ctx) => {
 // Update handleCallbackQuery to include new handlers
 const handleCallbackQuery = async (ctx) => {
   const callbackData = ctx.callbackQuery.data;
-
   try {
     if (callbackData === "create_wallet") {
       await handleCreateWallet(ctx);
@@ -722,7 +722,7 @@ const handleCallbackQuery = async (ctx) => {
       await getBalance(ctx);
     } else if (callbackData.startsWith("wallet_")) {
       await handleWalletSelectionCallback(ctx);
-    } else if (callbackData.startsWith("set_default_")) {
+    } else if (callbackData.startsWith("toggle_default_")) {
       await handleToggleDefaultWallet(ctx);
     } else if (callbackData.startsWith("rename_")) {
       await handleRenameWallet(ctx);
