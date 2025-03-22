@@ -1,5 +1,5 @@
-import * as R from "remeda";
 import { HumanMessage } from "@langchain/core/messages";
+import _ from "lodash";
 
 import { getOrCreateDefaultWallet } from "./wallet.js";
 import {
@@ -33,9 +33,9 @@ const start = async (ctx) => {
   // Create or update user in database
   await createOrUpdateUser({
     telegram_id: telegramId,
-    username: R.pathOr(ctx.from, ["username"], ""),
-    first_name: R.pathOr(ctx.from, ["first_name"], ""),
-    last_name: R.pathOr(ctx.from, ["last_name"], ""),
+    username: _.get(ctx.from, ["username"], ""),
+    first_name: _.get(ctx.from, ["first_name"], ""),
+    last_name: _.get(ctx.from, ["last_name"], ""),
   });
 
   // Get or create default wallet
@@ -84,12 +84,9 @@ const handleTextMessage = async (ctx) => {
       let replacementsMade = false;
 
       // Process each mention
-      const totalMentions = mentions.length;
       let currentMention = 0;
       for (const mention of mentions) {
-        currentMention++;
         const username = mention.substring(1); // Remove @ symbol
-
         try {
           // Look up user by username or any identifier
           const userRecord = await findUserByIdentifier(username);
@@ -99,6 +96,7 @@ const handleTextMessage = async (ctx) => {
             const userWallet = await getOrCreateDefaultWallet(
               userRecord.telegram_id
             );
+            currentMention++;
             processedMessage = processedMessage.replace(
               mention,
               userWallet.address
@@ -120,6 +118,7 @@ const handleTextMessage = async (ctx) => {
         await ctx.reply(`Can't process: ${processedMessage}`, {
           reply_to_message_id: ctx.message.message_id,
         });
+        return;
       }
     }
 

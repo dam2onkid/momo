@@ -2,7 +2,11 @@ import { AgentRuntime, createAptosTools } from "move-agent-kit";
 import { llm } from "../config/index.js";
 import { MemorySaver } from "@langchain/langgraph";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
+
+import { TokenAnalystTool, TokenMarketInfoTool } from "../tools/index.js";
 import { aptos, getSignerAndAccount } from "../config/aptos.js";
+
+const externalTools = [new TokenAnalystTool(), new TokenMarketInfoTool()];
 
 const getAgentRuntime = async (privateKey) => {
   const { signer } = await getSignerAndAccount(privateKey);
@@ -10,7 +14,7 @@ const getAgentRuntime = async (privateKey) => {
   return agentRuntime;
 };
 
-const initializeAgent = async (wallet, externalTools = []) => {
+const initializeAgent = async (wallet) => {
   try {
     const aptosAgent = await getAgentRuntime(wallet.private_key);
     const tools = createAptosTools(aptosAgent);
