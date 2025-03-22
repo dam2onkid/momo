@@ -30,9 +30,10 @@ bot.on("message:text", async (ctx, next) => {
   }
 
   // Check if this is an import wallet message
-  if (await wallet.handleImportMessage(ctx)) {
-    return;
-  }
+  // FIXME: This is causing issues with the bot
+  // if (await wallet.handleImportMessage(ctx)) {
+  //   return;
+  // }
 
   // If not a special message, proceed with normal message handling
   await command.handleTextMessage(ctx);

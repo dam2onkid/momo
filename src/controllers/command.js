@@ -125,6 +125,13 @@ const handleTextMessage = async (ctx) => {
 
     const { agent, config } = await initializeAgent(wallet);
 
+    console.log(
+      "Processing message:",
+      cleanMessage,
+      "from user ID:",
+      ctx.from.id
+    );
+
     const stream = await agent.stream(
       { messages: [new HumanMessage(cleanMessage)] },
       config

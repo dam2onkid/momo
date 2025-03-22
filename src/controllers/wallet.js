@@ -749,4 +749,6 @@ export {
   getBalance,
   getWallets,
   handleCallbackQuery,
+  handleRenameMessage,
+  handleImportMessage,
 };
