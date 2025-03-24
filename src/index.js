@@ -1,5 +1,6 @@
 import { Bot, session } from "grammy";
 import dotenv from "dotenv";
+import { limit } from "@grammyjs/ratelimiter";
 
 import { command, wallet } from "./controllers/index.js";
 // import { initTokenMonitoring } from "./utils/tokenMonitor.js";
@@ -7,6 +8,16 @@ import { command, wallet } from "./controllers/index.js";
 // Load environment variables
 dotenv.config();
 const bot = new Bot(process.env.BOT_TOKEN);
+
+bot.use(
+  limit({
+    timeFrame: 1000,
+    limit: 1,
+    onLimitExceeded: (ctx) => {
+      ctx.reply("⏳ Please slow down! You are sending too many requests.");
+    },
+  })
+);
 
 // Initialize session middleware
 bot.use(

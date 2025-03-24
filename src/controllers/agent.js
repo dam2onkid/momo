@@ -3,10 +3,18 @@ import { llm } from "../config/index.js";
 import { MemorySaver } from "@langchain/langgraph";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 
-import { TokenAnalystTool, TokenMarketInfoTool } from "../tools/index.js";
+import {
+  TokenAnalystTool,
+  TokenMarketInfoTool,
+  TokenTrendingTool,
+} from "../tools/index.js";
 import { aptos, getSignerAndAccount } from "../config/aptos.js";
 
-const externalTools = [new TokenAnalystTool(), new TokenMarketInfoTool()];
+const externalTools = [
+  new TokenAnalystTool(),
+  new TokenMarketInfoTool(),
+  new TokenTrendingTool(),
+];
 
 const getAgentRuntime = async (privateKey) => {
   const { signer } = await getSignerAndAccount(privateKey);
